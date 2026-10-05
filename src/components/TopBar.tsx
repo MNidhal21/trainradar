@@ -17,8 +17,10 @@ const TRAIN_TYPES: TrainType[] = [
   'Rajdhani',
   'Shatabdi',
   'Vande Bharat',
+  'Duronto',
   'Superfast',
   'Express',
+  'Mail',
 ];
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -49,7 +51,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <input
             type="text"
             className="search-input"
-            placeholder="Search train by number or name (e.g. 12301, Rajdhani)..."
+            placeholder="Search 5,000+ trains by number or name (e.g. 12301, Rajdhani, Mumbai)..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
           />

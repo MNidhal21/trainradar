@@ -3,10 +3,10 @@ export type TrainType =
   | 'Rajdhani'
   | 'Shatabdi'
   | 'Vande Bharat'
+  | 'Duronto'
   | 'Superfast'
   | 'Express'
-  | 'Passenger'
-  | 'Other';
+  | 'Mail';
 
 export interface TrainLive {
   train_number: string;
@@ -14,6 +14,14 @@ export interface TrainLive {
   train_type: string;
   current_lat: number;
   current_lng: number;
+  from_station_code: string;
+  from_station_name: string;
+  to_station_code: string;
+  to_station_name: string;
+  departure_time: string;
+  arrival_time: string;
+  duration_h?: number;
+  duration_m?: number;
   next_station_code?: string;
   next_station_name?: string;
   next_lat?: number | null;
@@ -34,7 +42,7 @@ export interface TrainRouteFeature {
   };
   geometry: {
     type: 'LineString';
-    coordinates: [number, number][]; // [lng, lat]
+    coordinates: [number, number][];
   };
 }
 

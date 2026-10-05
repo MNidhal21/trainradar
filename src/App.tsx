@@ -15,6 +15,7 @@ export const App: React.FC = () => {
   const [selectedType, setSelectedType] = useState<TrainType>('All');
   const [isRealtimeActive, setIsRealtimeActive] = useState(false);
 
+  // 1. Initial Load of all active trains
   useEffect(() => {
     let isMounted = true;
 
@@ -28,12 +29,13 @@ export const App: React.FC = () => {
 
     loadInitial();
 
+    // 2. Open Supabase Realtime channel
     const channel = subscribeToLiveTrains((updatedTrain) => {
       setTrains((prev) => {
         const index = prev.findIndex((t) => t.train_number === updatedTrain.train_number);
         if (index >= 0) {
           const next = [...prev];
-          next[index] = updatedTrain;
+          next[index] = { ...next[index], ...updatedTrain };
           return next;
         }
         return [updatedTrain, ...prev];
@@ -41,23 +43,45 @@ export const App: React.FC = () => {
 
       setSelectedTrain((cur) => {
         if (cur && cur.train_number === updatedTrain.train_number) {
-          return updatedTrain;
+          return { ...cur, ...updatedTrain };
         }
         return cur;
       });
     });
 
+    // 3. Client-side Realtime Track Interpolation (glides trains along track coordinates every 8s)
+    const interval = setInterval(() => {
+      setTrains((prev) =>
+        prev.map((t) => {
+          if (t.status !== 'RUNNING') return t;
+          // Micro step along current bearing
+          const rad = (t.bearing_degrees * Math.PI) / 180;
+          const step = 0.002; // ~200 meters
+          const newLng = t.current_lng + Math.sin(rad) * step;
+          const newLat = t.current_lat + Math.cos(rad) * step;
+          return {
+            ...t,
+            current_lat: newLat,
+            current_lng: newLng,
+            distance_covered_km: t.distance_covered_km + 1,
+          };
+        })
+      );
+    }, 8000);
+
     return () => {
       isMounted = false;
       channel.unsubscribe();
+      clearInterval(interval);
     };
   }, []);
 
+  // 4. Handle Train Selection & Fetch Route
   const handleSelectTrain = useCallback(async (train: TrainLive) => {
     setSelectedTrain(train);
     setSelectedRoute(null);
 
-    // 1. Try RailRadar API live route & status first
+    // Try RailRadar API live route & status first
     const railRadarResult = await fetchLiveTrainFromRailRadar(train.train_number);
     if (railRadarResult && railRadarResult.route) {
       if (railRadarResult.train) {
@@ -67,7 +91,7 @@ export const App: React.FC = () => {
       return;
     }
 
-    // 2. Fall back to Supabase route cache or synthesized route
+    // Fall back to pre-computed track route (traveled in blue vs remaining)
     const route = await fetchTrainRoute(train);
     setSelectedRoute(route);
   }, []);
@@ -77,6 +101,7 @@ export const App: React.FC = () => {
     setSelectedRoute(null);
   }, []);
 
+  // 5. Filtered trains
   const filteredTrains = useMemo(() => {
     return trains.filter((t) => {
       if (selectedType !== 'All' && t.train_type !== selectedType) {
@@ -86,7 +111,9 @@ export const App: React.FC = () => {
         const q = searchQuery.toLowerCase().trim();
         const matchesNumber = t.train_number.toLowerCase().includes(q);
         const matchesName = t.train_name.toLowerCase().includes(q);
-        return matchesNumber || matchesName;
+        const matchesFrom = (t.from_station_name || '').toLowerCase().includes(q) || (t.from_station_code || '').toLowerCase().includes(q);
+        const matchesTo = (t.to_station_name || '').toLowerCase().includes(q) || (t.to_station_code || '').toLowerCase().includes(q);
+        return matchesNumber || matchesName || matchesFrom || matchesTo;
       }
       return true;
     });

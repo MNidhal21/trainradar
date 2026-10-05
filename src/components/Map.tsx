@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import maplibregl, { Map as MapLibreMap, Marker } from 'maplibre-gl';
 import { TrainLive, TrainRouteGeoJSON } from '../types/train';
-import { DARK_MAP_STYLE } from '../lib/mapStyle';
+import { DARK_MAP_STYLE_URL } from '../lib/mapStyle';
 
 interface MapProps {
   trains: TrainLive[];
@@ -25,7 +25,7 @@ export const Map: React.FC<MapProps> = ({
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: DARK_MAP_STYLE,
+      style: DARK_MAP_STYLE_URL,
       center: [78.9629, 22.5937],
       zoom: 4.8,
       minZoom: 3.5,
@@ -38,7 +38,9 @@ export const Map: React.FC<MapProps> = ({
       'top-right'
     );
 
-    map.on('load', () => {
+    const setupRouteLayers = () => {
+      if (map.getSource('selected-train-route')) return;
+
       map.addSource('selected-train-route', {
         type: 'geojson',
         data: {
@@ -47,7 +49,7 @@ export const Map: React.FC<MapProps> = ({
         },
       });
 
-      // Traveled Route Layer
+      // Traveled Route Glow & Line (Amber)
       map.addLayer({
         id: 'route-traveled-glow',
         type: 'line',
@@ -60,7 +62,7 @@ export const Map: React.FC<MapProps> = ({
         paint: {
           'line-color': '#F2A64A',
           'line-width': 8,
-          'line-opacity': 0.28,
+          'line-opacity': 0.35,
           'line-blur': 4,
         },
       });
@@ -81,7 +83,7 @@ export const Map: React.FC<MapProps> = ({
         },
       });
 
-      // Remaining Route Layer
+      // Remaining Route Glow & Line (Solid Light Blue)
       map.addLayer({
         id: 'route-remaining-glow',
         type: 'line',
@@ -94,7 +96,7 @@ export const Map: React.FC<MapProps> = ({
         paint: {
           'line-color': '#7FC7F0',
           'line-width': 8,
-          'line-opacity': 0.24,
+          'line-opacity': 0.3,
           'line-blur': 4,
         },
       });
@@ -113,7 +115,9 @@ export const Map: React.FC<MapProps> = ({
           'line-width': 3.5,
         },
       });
-    });
+    };
+
+    map.on('load', setupRouteLayers);
 
     mapRef.current = map;
 

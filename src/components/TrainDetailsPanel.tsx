@@ -112,7 +112,7 @@ export const TrainDetailsPanel: React.FC<TrainDetailsPanelProps> = ({ train, onC
             <span>HEADING</span>
           </div>
           <div className="stat-value-group">
-            <span className="stat-mono-val">{train.bearing_degrees}�</span>
+            <span className="stat-mono-val">{train.bearing_degrees}\u00B0</span>
             <span className="stat-unit">BEARING</span>
           </div>
         </div>
@@ -146,8 +146,8 @@ export const TrainDetailsPanel: React.FC<TrainDetailsPanelProps> = ({ train, onC
 
       {/* Coordinates / Meta footer */}
       <div className="panel-footer-meta">
-        <span>LAT: {train.current_lat.toFixed(4)}�N</span>
-        <span>LNG: {train.current_lng.toFixed(4)}�E</span>
+        <span>LAT: {train.current_lat.toFixed(4)}\u00B0N</span>
+        <span>LNG: {train.current_lng.toFixed(4)}\u00B0E</span>
       </div>
     </aside>
   );

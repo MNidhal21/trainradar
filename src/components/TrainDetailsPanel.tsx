@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { X, Clock, Navigation, Compass, MapPin, ArrowRight, Gauge } from 'lucide-react';
 import { TrainLive } from '../types/train';
 
@@ -186,3 +186,5 @@ export const TrainDetailsPanel: React.FC<TrainDetailsPanelProps> = ({ train, onC
     </aside>
   );
 };
+
+

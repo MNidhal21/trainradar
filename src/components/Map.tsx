@@ -1,13 +1,92 @@
-import React, { useEffect, useRef } from 'react';
-import maplibregl, { Map as MapLibreMap, Marker, Popup } from 'maplibre-gl';
+﻿import React, { useEffect, useRef } from 'react';
+import maplibregl, { Map as MapLibreMap, Popup } from 'maplibre-gl';
 import { TrainLive, TrainRouteGeoJSON } from '../types/train';
-import { DARK_MAP_STYLE_URL } from '../lib/mapStyle';
+import { DARK_MAP_STYLE_URL, applyMapBrightness } from '../lib/mapStyle';
 
 interface MapProps {
   trains: TrainLive[];
   selectedTrain: TrainLive | null;
   selectedRoute: TrainRouteGeoJSON | null;
   onSelectTrain: (train: TrainLive) => void;
+}
+
+/**
+ * Creates high-DPI orange locomotive train head icon
+ */
+function createOrangeTrainHeadImage(): ImageData {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  const cx = size / 2;
+  const cy = size / 2;
+
+  // Outer orange glow corona
+  const glow = ctx.createRadialGradient(cx, cy, 14, cx, cy, 31);
+  glow.addColorStop(0, 'rgba(249, 115, 22, 0.95)');
+  glow.addColorStop(0.5, 'rgba(234, 88, 12, 0.45)');
+  glow.addColorStop(1, 'rgba(234, 88, 12, 0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 31, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Orange circular body
+  const bodyGrad = ctx.createLinearGradient(cx - 18, cy - 18, cx + 18, cy + 18);
+  bodyGrad.addColorStop(0, '#fb923c'); // bright vibrant orange
+  bodyGrad.addColorStop(1, '#ea580c'); // deep locomotive orange
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 21, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Crisp White Outer Border
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Forward Directional Locomotive Nose (points up at 0 deg)
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 18);
+  ctx.lineTo(cx + 6, cy - 9);
+  ctx.lineTo(cx - 6, cy - 9);
+  ctx.closePath();
+  ctx.fill();
+
+  // Locomotive Cab Body
+  const rx = cx - 7;
+  const ry = cy - 8;
+  const rw = 14;
+  const rh = 18;
+  const r = 3;
+  ctx.beginPath();
+  ctx.moveTo(rx + r, ry);
+  ctx.lineTo(rx + rw - r, ry);
+  ctx.arcTo(rx + rw, ry, rx + rw, ry + r, r);
+  ctx.lineTo(rx + rw, ry + rh - r);
+  ctx.arcTo(rx + rw, ry + rh, rx + rw - r, ry + rh, r);
+  ctx.lineTo(rx + r, ry + rh);
+  ctx.arcTo(rx, ry + rh, rx, ry + rh - r, r);
+  ctx.lineTo(rx, ry + r);
+  ctx.arcTo(rx, ry, rx + r, ry, r);
+  ctx.closePath();
+  ctx.fill();
+
+  // Locomotive Windshield
+  ctx.fillStyle = '#9a3412';
+  ctx.fillRect(cx - 5, cy - 5, 10, 4);
+
+  // Twin Front Headlights (bright yellow)
+  ctx.fillStyle = '#fef08a';
+  ctx.beginPath();
+  ctx.arc(cx - 4, cy + 6.5, 1.8, 0, Math.PI * 2);
+  ctx.arc(cx + 4, cy + 6.5, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+
+  return ctx.getImageData(0, 0, size, size);
 }
 
 export const Map: React.FC<MapProps> = ({
@@ -18,7 +97,9 @@ export const Map: React.FC<MapProps> = ({
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
-  const markersRef = useRef<Record<string, { marker: Marker; el: HTMLElement; lat: number; lng: number }>>({});
+  const hoverPopupRef = useRef<Popup | null>(null);
+  const trainsRef = useRef<TrainLive[]>(trains);
+  trainsRef.current = trains;
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -29,7 +110,7 @@ export const Map: React.FC<MapProps> = ({
       center: [78.9629, 22.5937],
       zoom: 4.8,
       minZoom: 3.5,
-      maxZoom: 15,
+      maxZoom: 16,
       attributionControl: false,
     });
 
@@ -39,14 +120,21 @@ export const Map: React.FC<MapProps> = ({
     );
 
     map.on('load', () => {
-      // 1. ADD ALL INDIAN RAILWAY TRACKS (Red Dotted Lines - PRD Req 4)
+      // 1. Apply brightness & contrast so map is clear, luminous and not pitch black (PRD Req 3)
+      applyMapBrightness(map);
+
+      // Register orange locomotive icon (PRD Req 5)
+      const trainIcon = createOrangeTrainHeadImage();
+      map.addImage('train-locomotive-orange', trainIcon, { pixelRatio: 2 });
+
+      // 2. ADD ALL INDIAN RAILWAY TRACKS (Red Dotted Lines - PRD Req 4)
       if (!map.getSource('railway-tracks')) {
         map.addSource('railway-tracks', {
           type: 'geojson',
           data: './data/railway_tracks.json',
         });
 
-        // Red soft glow under tracks
+        // Soft Red Glow under tracks
         map.addLayer({
           id: 'railway-tracks-glow',
           type: 'line',
@@ -57,32 +145,31 @@ export const Map: React.FC<MapProps> = ({
           },
           paint: {
             'line-color': '#ef4444',
-            'line-width': 3.5,
-            'line-opacity': 0.25,
-            'line-blur': 2,
-            'line-dasharray': [2, 2.5],
+            'line-width': 3.2,
+            'line-opacity': 0.3,
+            'line-blur': 1.8,
           },
         });
 
-        // Red dotted railway track lines
+        // Crisp Red Dotted Railway Track lines
         map.addLayer({
           id: 'railway-tracks-dotted',
           type: 'line',
           source: 'railway-tracks',
           layout: {
-            'line-join': 'round',
+            'line-join': 'miter',
             'line-cap': 'round',
           },
           paint: {
             'line-color': '#ef4444',
-            'line-width': 1.6,
-            'line-opacity': 0.85,
-            'line-dasharray': [2, 2.5],
+            'line-width': 1.8,
+            'line-opacity': 0.9,
+            'line-dasharray': [1.2, 2.4],
           },
         });
       }
 
-      // 2. ADD ALL INDIAN RAILWAY STATIONS (Green Dots - PRD Req 7)
+      // 3. ADD ALL INDIAN RAILWAY STATIONS (Green Dots - PRD Req 7)
       if (!map.getSource('railway-stations')) {
         map.addSource('railway-stations', {
           type: 'geojson',
@@ -94,30 +181,30 @@ export const Map: React.FC<MapProps> = ({
           id: 'railway-stations-glow',
           type: 'circle',
           source: 'railway-stations',
-          minzoom: 5.2,
+          minzoom: 4.0,
           paint: {
-            'circle-radius': ['interpolate', ['linear'], ['zoom'], 5.2, 3, 9, 6.5],
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 2, 7, 5, 11, 8],
             'circle-color': '#10b981',
             'circle-opacity': 0.4,
             'circle-blur': 1,
           },
         });
 
-        // Green Station Circle Dot
+        // Green Station Dot
         map.addLayer({
           id: 'railway-stations-dot',
           type: 'circle',
           source: 'railway-stations',
-          minzoom: 5.2,
+          minzoom: 4.0,
           paint: {
-            'circle-radius': ['interpolate', ['linear'], ['zoom'], 5.2, 1.8, 9, 4],
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 1.5, 7, 3, 11, 5],
             'circle-color': '#22c55e',
             'circle-stroke-width': 1,
             'circle-stroke-color': '#064e3b',
           },
         });
 
-        // Station Code & Name Labels on higher zoom
+        // Station Code & Name Labels
         map.addLayer({
           id: 'railway-stations-label',
           type: 'symbol',
@@ -126,7 +213,7 @@ export const Map: React.FC<MapProps> = ({
           layout: {
             'text-field': ['concat', ['get', 'name'], ' (', ['get', 'code'], ')'],
             'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
-            'text-size': 10,
+            'text-size': 11,
             'text-offset': [0, 1.2],
             'text-anchor': 'top',
           },
@@ -137,7 +224,7 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Interactive Station Popups
+        // Station click popup
         map.on('mouseenter', 'railway-stations-dot', () => {
           map.getCanvas().style.cursor = 'pointer';
         });
@@ -156,14 +243,14 @@ export const Map: React.FC<MapProps> = ({
               <div class="station-popup-content">
                 <span class="station-popup-code">${props.code}</span>
                 <span class="station-popup-name">${props.name}</span>
-                <span class="station-popup-state">${props.state || ''} ${props.zone ? '� Zone: ' + props.zone : ''}</span>
+                <span class="station-popup-state">${props.state || ''} ${props.zone ? '• Zone: ' + props.zone : ''}</span>
               </div>
             `)
             .addTo(map);
         });
       }
 
-      // 3. SELECTED TRAIN ROUTE (Blue Traveled Route - PRD Req 5)
+      // 4. SELECTED TRAIN ROUTE (Vibrant Blue Traveled Route - PRD Req 5)
       if (!map.getSource('selected-train-route')) {
         map.addSource('selected-train-route', {
           type: 'geojson',
@@ -173,7 +260,7 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Traveled Route Glow (Neon Blue)
+        // Traveled Route Glow (Neon Sky Blue)
         map.addLayer({
           id: 'route-traveled-glow',
           type: 'line',
@@ -184,14 +271,14 @@ export const Map: React.FC<MapProps> = ({
             'line-cap': 'round',
           },
           paint: {
-            'line-color': '#38bdf8',
-            'line-width': 10,
-            'line-opacity': 0.45,
-            'line-blur': 5,
+            'line-color': '#00e5ff',
+            'line-width': 18,
+            'line-opacity': 0.75,
+            'line-blur': 8,
           },
         });
 
-        // Traveled Route Solid Line (Vibrant Blue - PRD Req 5)
+        // Traveled Route Solid Line (Electric Vibrant Cyan-Blue - PRD Req 5)
         map.addLayer({
           id: 'route-traveled-line',
           type: 'line',
@@ -202,8 +289,9 @@ export const Map: React.FC<MapProps> = ({
             'line-cap': 'round',
           },
           paint: {
-            'line-color': '#0284c7',
-            'line-width': 4.5,
+            'line-color': '#00d2ff',
+            'line-width': 6.5,
+            'line-opacity': 1.0,
           },
         });
 
@@ -219,10 +307,147 @@ export const Map: React.FC<MapProps> = ({
           },
           paint: {
             'line-color': '#7dd3fc',
-            'line-width': 2.5,
+            'line-width': 3,
             'line-dasharray': [2, 2],
-            'line-opacity': 0.7,
+            'line-opacity': 0.85,
           },
+        });
+      }
+
+      // 5. ALL ACTIVE RUNNING TRAINS (Orange Locomotive Heads - PRD Req 1, 2, 5)
+      if (!map.getSource('trains-live-source')) {
+        map.addSource('trains-live-source', {
+          type: 'geojson',
+          data: {
+            type: 'FeatureCollection',
+            features: [],
+          },
+        });
+
+        // Orange Train Head Glow
+        map.addLayer({
+          id: 'trains-live-glow',
+          type: 'circle',
+          source: 'trains-live-source',
+          paint: {
+            'circle-radius': [
+              'interpolate', ['linear'], ['zoom'],
+              4, 4,
+              7, 7,
+              12, 11
+            ],
+            'circle-color': '#f97316',
+            'circle-opacity': 0.5,
+            'circle-blur': 0.8,
+          },
+        });
+
+        // Orange Locomotive Train Head Symbol
+        map.addLayer({
+          id: 'trains-live-head',
+          type: 'symbol',
+          source: 'trains-live-source',
+          layout: {
+            'icon-image': 'train-locomotive-orange',
+            'icon-size': [
+              'interpolate', ['linear'], ['zoom'],
+              4, 0.5,
+              7, 0.75,
+              11, 1.05
+            ],
+            'icon-rotate': ['get', 'bearing_degrees'],
+            'icon-rotation-alignment': 'map',
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true,
+          },
+        });
+
+        // Train Label at zoom >= 8.5
+        map.addLayer({
+          id: 'trains-live-label',
+          type: 'symbol',
+          source: 'trains-live-source',
+          minzoom: 8.5,
+          layout: {
+            'text-field': ['concat', '#', ['get', 'train_number'], ' ', ['get', 'train_name']],
+            'text-size': 11,
+            'text-offset': [0, 1.5],
+            'text-anchor': 'top',
+            'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+          },
+          paint: {
+            'text-color': '#fb923c',
+            'text-halo-color': '#111827',
+            'text-halo-width': 2,
+          },
+        });
+
+        // 6. Selected Train Pulse Ring
+        map.addSource('trains-selected-source', {
+          type: 'geojson',
+          data: {
+            type: 'FeatureCollection',
+            features: [],
+          },
+        });
+
+        map.addLayer({
+          id: 'train-selected-ring',
+          type: 'circle',
+          source: 'trains-selected-source',
+          paint: {
+            'circle-radius': 18,
+            'circle-color': '#00e5ff',
+            'circle-opacity': 0.4,
+            'circle-stroke-width': 3.5,
+            'circle-stroke-color': '#ffffff',
+          },
+        });
+
+        // Interactive Handlers for Train Selection
+        const handleTrainClick = (e: any) => {
+          const feat = e.features?.[0];
+          if (!feat) return;
+          const trainNum = feat.properties?.train_number;
+          const found = trainsRef.current.find((t) => t.train_number === trainNum);
+          if (found) {
+            onSelectTrain(found);
+          }
+        };
+
+        map.on('click', 'trains-live-head', handleTrainClick);
+        map.on('click', 'trains-live-glow', handleTrainClick);
+
+        // Hover tooltip
+        const hoverPopup = new Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 14,
+          className: 'train-hover-popup',
+        });
+        hoverPopupRef.current = hoverPopup;
+
+        map.on('mouseenter', 'trains-live-head', (e: any) => {
+          map.getCanvas().style.cursor = 'pointer';
+          const feat = e.features?.[0];
+          if (!feat) return;
+          const geom = feat.geometry as any;
+          const p = feat.properties as any;
+          hoverPopup
+            .setLngLat(geom.coordinates)
+            .setHTML(`
+              <div class="hover-popup-content">
+                <span class="hover-train-no">#${p.train_number}</span>
+                <span class="hover-train-name">${p.train_name}</span>
+                <span class="hover-train-route">${p.from_station_code} → ${p.to_station_code}</span>
+              </div>
+            `)
+            .addTo(map);
+        });
+
+        map.on('mouseleave', 'trains-live-head', () => {
+          map.getCanvas().style.cursor = '';
+          hoverPopup.remove();
         });
       }
     });
@@ -235,7 +460,78 @@ export const Map: React.FC<MapProps> = ({
     };
   }, []);
 
-  // Update Route Layers when selectedRoute changes
+  // Update All Trains Live GeoJSON
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    const source = map.getSource('trains-live-source') as maplibregl.GeoJSONSource;
+    if (source) {
+      source.setData({
+        type: 'FeatureCollection',
+        features: trains.map((t) => ({
+          type: 'Feature',
+          id: t.train_number,
+          properties: {
+            train_number: t.train_number,
+            train_name: t.train_name,
+            train_type: t.train_type,
+            bearing_degrees: t.bearing_degrees || 0,
+            from_station_code: t.from_station_code,
+            to_station_code: t.to_station_code,
+            departure_time: t.departure_time,
+            arrival_time: t.arrival_time,
+            status: t.status,
+            delay_minutes: t.delay_minutes || 0,
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [t.current_lng, t.current_lat],
+          },
+        })),
+      });
+    }
+  }, [trains]);
+
+  // Update Selected Train Highlight Ring & Dim Others when selected
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    const selectedSource = map.getSource('trains-selected-source') as maplibregl.GeoJSONSource;
+    if (selectedSource) {
+      if (selectedTrain) {
+        selectedSource.setData({
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'Point',
+                coordinates: [selectedTrain.current_lng, selectedTrain.current_lat],
+              },
+            },
+          ],
+        });
+
+        // Bring selected train route above all layers
+        if (map.getLayer('route-traveled-line')) {
+          map.moveLayer('route-traveled-glow');
+          map.moveLayer('route-traveled-line');
+          map.moveLayer('route-remaining-line');
+          map.moveLayer('train-selected-ring');
+        }
+      } else {
+        selectedSource.setData({
+          type: 'FeatureCollection',
+          features: [],
+        });
+      }
+    }
+  }, [selectedTrain]);
+
+  // Update Route Layers when selectedRoute changes (Traveled in Blue)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
@@ -244,6 +540,12 @@ export const Map: React.FC<MapProps> = ({
     if (source) {
       if (selectedRoute) {
         source.setData(selectedRoute as any);
+        if (map.getLayer('route-traveled-line')) {
+          map.moveLayer('route-traveled-glow');
+          map.moveLayer('route-traveled-line');
+          map.moveLayer('route-remaining-line');
+          map.moveLayer('train-selected-ring');
+        }
       } else {
         source.setData({
           type: 'FeatureCollection',
@@ -267,96 +569,11 @@ export const Map: React.FC<MapProps> = ({
     });
   }, [selectedTrain]);
 
-  // Render Orange Train Head Markers (PRD Req 5)
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const currentMarkers = markersRef.current;
-    // Show top 250 active trains on canvas for smooth 60fps performance + selected train
-    const visibleTrains = trains.slice(0, 300);
-    if (selectedTrain && !visibleTrains.some(t => t.train_number === selectedTrain.train_number)) {
-      visibleTrains.unshift(selectedTrain);
-    }
-
-    const incomingKeys = new Set(visibleTrains.map((t) => t.train_number));
-
-    Object.keys(currentMarkers).forEach((num) => {
-      if (!incomingKeys.has(num)) {
-        currentMarkers[num].marker.remove();
-        delete currentMarkers[num];
-      }
-    });
-
-    visibleTrains.forEach((train) => {
-      const isSelected = selectedTrain?.train_number === train.train_number;
-
-      if (!currentMarkers[train.train_number]) {
-        const el = document.createElement('div');
-        el.className = 'train-marker-wrapper';
-        el.setAttribute('role', 'button');
-        el.setAttribute('tabindex', '0');
-        el.setAttribute('aria-label', `Train ${train.train_number} - ${train.train_name}`);
-
-        // ORANGE TRAIN HEAD LOCOMOTIVE ICON (PRD Req 5)
-        el.innerHTML = `
-          <div class="train-marker-orange ${isSelected ? 'selected' : ''}" style="transform: rotate(${train.bearing_degrees || 0}deg);">
-            <div class="orange-pulse"></div>
-            <div class="locomotive-icon">
-              <!-- Express Train Locomotive Head -->
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                <path d="M12 2C8 2 5 3.5 5 7v10c0 1.66 1.34 3 3 3l-1.5 1.5v.5h11v-.5L16 20c1.66 0 3-1.34 3-3V7c0-3.5-3-5-7-5zm0 2c3.5 0 5 1 5 3H7c0-2 1.5-3 5-3zm-5 5h10v5H7V9zm2 7.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm6 0a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0z"/>
-              </svg>
-            </div>
-          </div>
-          <div class="marker-tooltip">
-            <span class="tooltip-no">#${train.train_number}</span>
-            <span class="tooltip-name">${train.train_name}</span>
-            <span class="tooltip-route">${train.from_station_code} ? ${train.to_station_code}</span>
-          </div>
-        `;
-
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          onSelectTrain(train);
-        });
-
-        const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([train.current_lng, train.current_lat])
-          .addTo(map);
-
-        currentMarkers[train.train_number] = {
-          marker,
-          el,
-          lat: train.current_lat,
-          lng: train.current_lng,
-        };
-      } else {
-        const entry = currentMarkers[train.train_number];
-        const markerEl = entry.el.querySelector('.train-marker-orange');
-
-        if (markerEl) {
-          if (isSelected) {
-            markerEl.classList.add('selected');
-          } else {
-            markerEl.classList.remove('selected');
-          }
-          (markerEl as HTMLElement).style.transform = `rotate(${train.bearing_degrees || 0}deg)`;
-        }
-
-        if (entry.lat !== train.current_lat || entry.lng !== train.current_lng) {
-          entry.marker.setLngLat([train.current_lng, train.current_lat]);
-          entry.lat = train.current_lat;
-          entry.lng = train.current_lng;
-        }
-      }
-    });
-  }, [trains, selectedTrain, onSelectTrain]);
-
   return (
     <div className="map-wrapper">
       <div ref={mapContainerRef} className="map-container" />
-      <div className="star-overlay" />
     </div>
   );
 };
+
+export default Map;

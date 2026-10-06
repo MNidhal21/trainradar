@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+﻿import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { TrainLive, TrainRouteGeoJSON, TrainType } from './types/train';
-import { fetchLiveTrains, fetchTrainRoute, subscribeToLiveTrains } from './lib/supabase';
+import { fetchLiveTrains, subscribeToLiveTrains } from './lib/supabase';
 import { fetchLiveTrainFromRailRadar } from './lib/railradar';
+import { loadRoutesMap, stepTrainsOnTrack, getRouteForSelectedTrain, RouteGeometry } from './lib/trackEngine';
 import { Map } from './components/Map';
 import { TopBar } from './components/TopBar';
 import { TrainDetailsPanel } from './components/TrainDetailsPanel';
@@ -15,21 +16,36 @@ export const App: React.FC = () => {
   const [selectedType, setSelectedType] = useState<TrainType>('All');
   const [isRealtimeActive, setIsRealtimeActive] = useState(false);
 
-  // 1. Initial Load of all active trains
+  const routesMapRef = useRef<Record<string, RouteGeometry>>({});
+  const selectedTrainRef = useRef<TrainLive | null>(null);
+  selectedTrainRef.current = selectedTrain;
+
+  // 1. Initial Load of all active trains & nationwide route network
   useEffect(() => {
     let isMounted = true;
 
     async function loadInitial() {
-      const data = await fetchLiveTrains();
+      const [trainsData, routesMap] = await Promise.all([
+        fetchLiveTrains(),
+        loadRoutesMap(),
+      ]);
+
       if (isMounted) {
-        setTrains(data);
+        routesMapRef.current = routesMap;
+        setTrains(trainsData);
         setIsRealtimeActive(true);
+
+        // If a train is already selected, generate its route
+        if (selectedTrainRef.current) {
+          const r = getRouteForSelectedTrain(selectedTrainRef.current, routesMap);
+          if (r) setSelectedRoute(r);
+        }
       }
     }
 
     loadInitial();
 
-    // 2. Open Supabase Realtime channel
+    // 2. Open Supabase Realtime channel for live updates
     const channel = subscribeToLiveTrains((updatedTrain) => {
       setTrains((prev) => {
         const index = prev.findIndex((t) => t.train_number === updatedTrain.train_number);
@@ -49,25 +65,28 @@ export const App: React.FC = () => {
       });
     });
 
-    // 3. Client-side Realtime Track Interpolation (glides trains along track coordinates every 8s)
+    // 3. Realtime Track Gliding Engine: Stepping trains exactly along their tracks every 3 seconds
     const interval = setInterval(() => {
-      setTrains((prev) =>
-        prev.map((t) => {
-          if (t.status !== 'RUNNING') return t;
-          // Micro step along current bearing
-          const rad = (t.bearing_degrees * Math.PI) / 180;
-          const step = 0.002; // ~200 meters
-          const newLng = t.current_lng + Math.sin(rad) * step;
-          const newLat = t.current_lat + Math.cos(rad) * step;
-          return {
-            ...t,
-            current_lat: newLat,
-            current_lng: newLng,
-            distance_covered_km: t.distance_covered_km + 1,
-          };
-        })
-      );
-    }, 8000);
+      setTrains((prev) => {
+        if (prev.length === 0) return prev;
+        const updated = stepTrainsOnTrack(prev, routesMapRef.current, 3);
+
+        // Keep selected train & blue traveled route synchronized with track progress
+        const currentSel = selectedTrainRef.current;
+        if (currentSel) {
+          const matching = updated.find((t) => t.train_number === currentSel.train_number);
+          if (matching) {
+            setSelectedTrain(matching);
+            const route = getRouteForSelectedTrain(matching, routesMapRef.current);
+            if (route) {
+              setSelectedRoute(route);
+            }
+          }
+        }
+
+        return updated;
+      });
+    }, 3000);
 
     return () => {
       isMounted = false;
@@ -76,24 +95,25 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // 4. Handle Train Selection & Fetch Route
+  // 4. Handle Train Selection & Fetch Route (PRD Req 5 - Traveled in Blue)
   const handleSelectTrain = useCallback(async (train: TrainLive) => {
     setSelectedTrain(train);
-    setSelectedRoute(null);
 
-    // Try RailRadar API live route & status first
-    const railRadarResult = await fetchLiveTrainFromRailRadar(train.train_number);
-    if (railRadarResult && railRadarResult.route) {
-      if (railRadarResult.train) {
-        setSelectedTrain((cur) => (cur ? { ...cur, ...railRadarResult.train } : train));
-      }
-      setSelectedRoute(railRadarResult.route);
-      return;
+    // Compute instantaneous on-track traveled route (blue) vs remaining route
+    const instantRoute = getRouteForSelectedTrain(train, routesMapRef.current);
+    if (instantRoute) {
+      setSelectedRoute(instantRoute);
     }
 
-    // Fall back to pre-computed track route (traveled in blue vs remaining)
-    const route = await fetchTrainRoute(train);
-    setSelectedRoute(route);
+    // Also check live telemetry from RailRadar API if available (keep track geometry for route)
+    try {
+      const railRadarResult = await fetchLiveTrainFromRailRadar(train.train_number);
+      if (railRadarResult && railRadarResult.train) {
+        setSelectedTrain((cur) => (cur ? { ...cur, ...railRadarResult.train } : train));
+      }
+    } catch {
+      // Kept instantRoute
+    }
   }, []);
 
   const handleClosePanel = useCallback(() => {
@@ -111,8 +131,12 @@ export const App: React.FC = () => {
         const q = searchQuery.toLowerCase().trim();
         const matchesNumber = t.train_number.toLowerCase().includes(q);
         const matchesName = t.train_name.toLowerCase().includes(q);
-        const matchesFrom = (t.from_station_name || '').toLowerCase().includes(q) || (t.from_station_code || '').toLowerCase().includes(q);
-        const matchesTo = (t.to_station_name || '').toLowerCase().includes(q) || (t.to_station_code || '').toLowerCase().includes(q);
+        const matchesFrom =
+          (t.from_station_name || '').toLowerCase().includes(q) ||
+          (t.from_station_code || '').toLowerCase().includes(q);
+        const matchesTo =
+          (t.to_station_name || '').toLowerCase().includes(q) ||
+          (t.to_station_code || '').toLowerCase().includes(q);
         return matchesNumber || matchesName || matchesFrom || matchesTo;
       }
       return true;

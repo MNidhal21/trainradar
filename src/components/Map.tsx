@@ -11,7 +11,7 @@ interface MapProps {
 }
 
 /**
- * Creates high-DPI orange locomotive train head icon
+ * Creates high-DPI orange locomotive train head icon (PRD Req 5)
  */
 function createOrangeTrainHeadImage(): ImageData {
   const size = 64;
@@ -100,6 +100,8 @@ export const Map: React.FC<MapProps> = ({
   const hoverPopupRef = useRef<Popup | null>(null);
   const trainsRef = useRef<TrainLive[]>(trains);
   trainsRef.current = trains;
+  const selectedRouteRef = useRef<TrainRouteGeoJSON | null>(selectedRoute);
+  selectedRouteRef.current = selectedRoute;
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -120,10 +122,10 @@ export const Map: React.FC<MapProps> = ({
     );
 
     map.on('load', () => {
-      // 1. Apply brightness & contrast so map is clear, luminous and not pitch black (PRD Req 3)
+      // 1. Boost brightness & contrast so map is clear, luminous and not pitch black (PRD Req 3)
       applyMapBrightness(map);
 
-      // Register orange locomotive icon (PRD Req 5)
+      // Register orange locomotive icon
       const trainIcon = createOrangeTrainHeadImage();
       map.addImage('train-locomotive-orange', trainIcon, { pixelRatio: 2 });
 
@@ -151,7 +153,7 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Crisp Red Dotted Railway Track lines
+        // Crisp Red Dotted Railway Track lines (PRD Req 4)
         map.addLayer({
           id: 'railway-tracks-dotted',
           type: 'line',
@@ -190,7 +192,7 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Green Station Dot
+        // Green Station Dot (PRD Req 7)
         map.addLayer({
           id: 'railway-stations-dot',
           type: 'circle',
@@ -254,7 +256,7 @@ export const Map: React.FC<MapProps> = ({
       if (!map.getSource('selected-train-route')) {
         map.addSource('selected-train-route', {
           type: 'geojson',
-          data: {
+          data: selectedRouteRef.current || {
             type: 'FeatureCollection',
             features: [],
           },
@@ -316,11 +318,32 @@ export const Map: React.FC<MapProps> = ({
 
       // 5. ALL ACTIVE RUNNING TRAINS (Orange Locomotive Heads - PRD Req 1, 2, 5)
       if (!map.getSource('trains-live-source')) {
+        const initialFeatures = trainsRef.current.map((t) => ({
+          type: 'Feature' as const,
+          id: t.train_number,
+          properties: {
+            train_number: t.train_number,
+            train_name: t.train_name,
+            train_type: t.train_type,
+            bearing_degrees: t.bearing_degrees || 0,
+            from_station_code: t.from_station_code,
+            to_station_code: t.to_station_code,
+            departure_time: t.departure_time,
+            arrival_time: t.arrival_time,
+            status: t.status,
+            delay_minutes: t.delay_minutes || 0,
+          },
+          geometry: {
+            type: 'Point' as const,
+            coordinates: [t.current_lng, t.current_lat],
+          },
+        }));
+
         map.addSource('trains-live-source', {
           type: 'geojson',
           data: {
             type: 'FeatureCollection',
-            features: [],
+            features: initialFeatures,
           },
         });
 
@@ -342,7 +365,7 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Orange Locomotive Train Head Symbol
+        // Orange Locomotive Train Head Symbol (PRD Req 5)
         map.addLayer({
           id: 'trains-live-head',
           type: 'symbol',
@@ -460,98 +483,116 @@ export const Map: React.FC<MapProps> = ({
     };
   }, []);
 
-  // Update All Trains Live GeoJSON
+  // Update All Trains Live GeoJSON (PRD Req 1 & 2)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map) return;
 
-    const source = map.getSource('trains-live-source') as maplibregl.GeoJSONSource;
-    if (source) {
-      source.setData({
-        type: 'FeatureCollection',
-        features: trains.map((t) => ({
-          type: 'Feature',
-          id: t.train_number,
-          properties: {
-            train_number: t.train_number,
-            train_name: t.train_name,
-            train_type: t.train_type,
-            bearing_degrees: t.bearing_degrees || 0,
-            from_station_code: t.from_station_code,
-            to_station_code: t.to_station_code,
-            departure_time: t.departure_time,
-            arrival_time: t.arrival_time,
-            status: t.status,
-            delay_minutes: t.delay_minutes || 0,
-          },
-          geometry: {
-            type: 'Point',
-            coordinates: [t.current_lng, t.current_lat],
-          },
-        })),
-      });
+    const updateTrainsData = () => {
+      const source = map.getSource('trains-live-source') as maplibregl.GeoJSONSource;
+      if (source) {
+        source.setData({
+          type: 'FeatureCollection',
+          features: trains.map((t) => ({
+            type: 'Feature',
+            id: t.train_number,
+            properties: {
+              train_number: t.train_number,
+              train_name: t.train_name,
+              train_type: t.train_type,
+              bearing_degrees: t.bearing_degrees || 0,
+              from_station_code: t.from_station_code,
+              to_station_code: t.to_station_code,
+              departure_time: t.departure_time,
+              arrival_time: t.arrival_time,
+              status: t.status,
+              delay_minutes: t.delay_minutes || 0,
+            },
+            geometry: {
+              type: 'Point',
+              coordinates: [t.current_lng, t.current_lat],
+            },
+          })),
+        });
+      }
+    };
+
+    if (map.isStyleLoaded()) {
+      updateTrainsData();
+    } else {
+      map.once('load', updateTrainsData);
     }
   }, [trains]);
 
-  // Update Selected Train Highlight Ring & Dim Others when selected
+  // Update Selected Train Highlight Ring
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map) return;
 
-    const selectedSource = map.getSource('trains-selected-source') as maplibregl.GeoJSONSource;
-    if (selectedSource) {
-      if (selectedTrain) {
-        selectedSource.setData({
-          type: 'FeatureCollection',
-          features: [
-            {
-              type: 'Feature',
-              properties: {},
-              geometry: {
-                type: 'Point',
-                coordinates: [selectedTrain.current_lng, selectedTrain.current_lat],
+    const updateSelectedRing = () => {
+      const selectedSource = map.getSource('trains-selected-source') as maplibregl.GeoJSONSource;
+      if (selectedSource) {
+        if (selectedTrain) {
+          selectedSource.setData({
+            type: 'FeatureCollection',
+            features: [
+              {
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'Point',
+                  coordinates: [selectedTrain.current_lng, selectedTrain.current_lat],
+                },
               },
-            },
-          ],
-        });
-
-        // Bring selected train route above all layers
-        if (map.getLayer('route-traveled-line')) {
-          map.moveLayer('route-traveled-glow');
-          map.moveLayer('route-traveled-line');
-          map.moveLayer('route-remaining-line');
-          map.moveLayer('train-selected-ring');
+            ],
+          });
+        } else {
+          selectedSource.setData({
+            type: 'FeatureCollection',
+            features: [],
+          });
         }
-      } else {
-        selectedSource.setData({
-          type: 'FeatureCollection',
-          features: [],
-        });
       }
+    };
+
+    if (map.isStyleLoaded()) {
+      updateSelectedRing();
+    } else {
+      map.once('load', updateSelectedRing);
     }
   }, [selectedTrain]);
 
-  // Update Route Layers when selectedRoute changes (Traveled in Blue)
+  // Update Route Layers when selectedRoute changes (Traveled in Blue - PRD Req 5)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map) return;
 
-    const source = map.getSource('selected-train-route') as maplibregl.GeoJSONSource;
-    if (source) {
-      if (selectedRoute) {
-        source.setData(selectedRoute as any);
-        if (map.getLayer('route-traveled-line')) {
-          map.moveLayer('route-traveled-glow');
-          map.moveLayer('route-traveled-line');
-          map.moveLayer('route-remaining-line');
-          map.moveLayer('train-selected-ring');
+    const updateRouteData = () => {
+      const source = map.getSource('selected-train-route') as maplibregl.GeoJSONSource;
+      if (source) {
+        if (selectedRoute) {
+          source.setData(selectedRoute as any);
+          if (map.getLayer('route-traveled-line')) {
+            map.moveLayer('route-traveled-glow');
+            map.moveLayer('route-traveled-line');
+            map.moveLayer('route-remaining-line');
+            if (map.getLayer('train-selected-ring')) {
+              map.moveLayer('train-selected-ring');
+            }
+          }
+        } else {
+          source.setData({
+            type: 'FeatureCollection',
+            features: [],
+          });
         }
-      } else {
-        source.setData({
-          type: 'FeatureCollection',
-          features: [],
-        });
       }
+    };
+
+    if (map.isStyleLoaded()) {
+      updateRouteData();
+    } else {
+      map.once('load', updateRouteData);
     }
   }, [selectedRoute]);
 

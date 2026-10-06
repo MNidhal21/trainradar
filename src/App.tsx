@@ -145,6 +145,8 @@ export const App: React.FC = () => {
         totalTrainsCount={trains.length}
         filteredCount={filteredTrains.length}
         isRealtimeActive={isRealtimeActive}
+        matchingTrains={filteredTrains}
+        onSelectTrain={handleSelectTrain}
       />
 
       <main className="main-viewport full-height">

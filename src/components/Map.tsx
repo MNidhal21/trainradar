@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useRef } from 'react';
 import maplibregl, { Map as MapLibreMap, Popup } from 'maplibre-gl';
+import { Compass } from 'lucide-react';
 import { TrainLive, TrainRouteGeoJSON } from '../types/train';
 import { DARK_MAP_STYLE_URL, applyMapBrightness } from '../lib/mapStyle';
 
@@ -35,8 +36,8 @@ function createOrangeTrainHeadImage(): ImageData {
 
   // Orange circular body
   const bodyGrad = ctx.createLinearGradient(cx - 18, cy - 18, cx + 18, cy + 18);
-  bodyGrad.addColorStop(0, '#fb923c'); // bright vibrant orange
-  bodyGrad.addColorStop(1, '#ea580c'); // deep locomotive orange
+  bodyGrad.addColorStop(0, '#fb923c');
+  bodyGrad.addColorStop(1, '#ea580c');
   ctx.fillStyle = bodyGrad;
   ctx.beginPath();
   ctx.arc(cx, cy, 21, 0, Math.PI * 2);
@@ -122,21 +123,20 @@ export const Map: React.FC<MapProps> = ({
     );
 
     map.on('load', () => {
-      // 1. Boost brightness & contrast so map is clear, luminous and not pitch black
+      // 1. Boost brightness & contrast
       applyMapBrightness(map);
 
       // Register orange locomotive icon
       const trainIcon = createOrangeTrainHeadImage();
       map.addImage('train-locomotive-orange', trainIcon, { pixelRatio: 2 });
 
-      // 2. ADD ALL INDIAN RAILWAY TRACKS (Red Dotted Lines - PRD Req 4)
+      // 2. ADD ALL INDIAN RAILWAY TRACKS (Red Dotted Lines)
       if (!map.getSource('railway-tracks')) {
         map.addSource('railway-tracks', {
           type: 'geojson',
           data: './data/railway_tracks.json',
         });
 
-        // Soft Red Glow under tracks
         map.addLayer({
           id: 'railway-tracks-glow',
           type: 'line',
@@ -153,7 +153,6 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Crisp Red Dotted Railway Track lines
         map.addLayer({
           id: 'railway-tracks-dotted',
           type: 'line',
@@ -171,14 +170,13 @@ export const Map: React.FC<MapProps> = ({
         });
       }
 
-      // 3. ADD ALL INDIAN RAILWAY STATIONS (Green Dots - PRD Req 7)
+      // 3. ADD ALL INDIAN RAILWAY STATIONS (Green Dots)
       if (!map.getSource('railway-stations')) {
         map.addSource('railway-stations', {
           type: 'geojson',
           data: './data/railway_stations.json',
         });
 
-        // Green Station Glow
         map.addLayer({
           id: 'railway-stations-glow',
           type: 'circle',
@@ -192,7 +190,6 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Green Station Dot
         map.addLayer({
           id: 'railway-stations-dot',
           type: 'circle',
@@ -206,7 +203,6 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Station Code & Name Labels
         map.addLayer({
           id: 'railway-stations-label',
           type: 'symbol',
@@ -226,7 +222,6 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Station click popup
         map.on('mouseenter', 'railway-stations-dot', () => {
           map.getCanvas().style.cursor = 'pointer';
         });
@@ -252,7 +247,7 @@ export const Map: React.FC<MapProps> = ({
         });
       }
 
-      // 4. SELECTED TRAIN ROUTE (Vibrant Blue Traveled Tail Line - PRD Req 5)
+      // 4. SELECTED TRAIN ROUTE (Vibrant Blue Traveled Tail)
       if (!map.getSource('selected-train-route')) {
         map.addSource('selected-train-route', {
           type: 'geojson',
@@ -262,7 +257,6 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Traveled Route Glow (Neon Sky Blue Comet Glow)
         map.addLayer({
           id: 'route-traveled-glow',
           type: 'line',
@@ -280,7 +274,6 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Traveled Route Solid Line (Electric Vibrant Cyan-Blue Track Tail)
         map.addLayer({
           id: 'route-traveled-line',
           type: 'line',
@@ -297,7 +290,6 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Remaining Route Projected Line (Subtle Cyan dashed)
         map.addLayer({
           id: 'route-remaining-line',
           type: 'line',
@@ -316,7 +308,7 @@ export const Map: React.FC<MapProps> = ({
         });
       }
 
-      // 5. ALL ACTIVE RUNNING TRAINS (Orange Locomotive Heads - PRD Req 1, 2, 5)
+      // 5. ALL ACTIVE RUNNING TRAINS (Orange Locomotive Heads)
       if (!map.getSource('trains-live-source')) {
         const initialFeatures = trainsRef.current.map((t) => ({
           type: 'Feature' as const,
@@ -347,7 +339,6 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Orange Train Head Glow
         map.addLayer({
           id: 'trains-live-glow',
           type: 'circle',
@@ -365,7 +356,6 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Orange Locomotive Train Head Symbol
         map.addLayer({
           id: 'trains-live-head',
           type: 'symbol',
@@ -385,7 +375,6 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Train Label at zoom >= 8.5
         map.addLayer({
           id: 'trains-live-label',
           type: 'symbol',
@@ -405,7 +394,7 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // 6. Selected Train Pulse Ring (Vibrant Cyan Circle Selector)
+        // 6. Selected Train Pulse Ring
         map.addSource('trains-selected-source', {
           type: 'geojson',
           data: {
@@ -427,7 +416,7 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Interactive Handlers for Train Selection (Robust number & string normalization)
+        // Interactive Click Selection
         const handleTrainClick = (e: any) => {
           const feat = e.features?.[0];
           if (!feat) return;
@@ -621,9 +610,28 @@ export const Map: React.FC<MapProps> = ({
     });
   }, [selectedTrain]);
 
+  const handleResetView = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.flyTo({
+      center: [78.9629, 22.5937],
+      zoom: 4.8,
+      duration: 1200,
+      essential: true,
+    });
+  };
+
   return (
     <div className="map-wrapper">
       <div ref={mapContainerRef} className="map-container" />
+      <button
+        className="map-center-btn"
+        onClick={handleResetView}
+        title="Reset view to whole India"
+      >
+        <Compass size={16} />
+        <span>India View</span>
+      </button>
     </div>
   );
 };

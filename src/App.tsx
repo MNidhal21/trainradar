@@ -1,19 +1,17 @@
 ﻿import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { TrainLive, TrainRouteGeoJSON, TrainType } from './types/train';
+import { TrainLive, TrainRouteGeoJSON } from './types/train';
 import { fetchLiveTrains, subscribeToLiveTrains } from './lib/supabase';
 import { fetchLiveTrainFromRailRadar } from './lib/railradar';
 import { loadRoutesMap, stepTrainsOnTrack, getRouteForSelectedTrain, RouteGeometry } from './lib/trackEngine';
 import { Map } from './components/Map';
 import { TopBar } from './components/TopBar';
 import { TrainDetailsPanel } from './components/TrainDetailsPanel';
-import { Footer } from './components/Footer';
 
 export const App: React.FC = () => {
   const [trains, setTrains] = useState<TrainLive[]>([]);
   const [selectedTrain, setSelectedTrain] = useState<TrainLive | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<TrainRouteGeoJSON | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedType, setSelectedType] = useState<TrainType>('All');
   const [isRealtimeActive, setIsRealtimeActive] = useState(false);
 
   const routesMapRef = useRef<Record<string, RouteGeometry>>({});
@@ -35,7 +33,6 @@ export const App: React.FC = () => {
         setTrains(trainsData);
         setIsRealtimeActive(true);
 
-        // If a train is already selected, generate its route
         if (selectedTrainRef.current) {
           const r = getRouteForSelectedTrain(selectedTrainRef.current, routesMap);
           if (r) setSelectedRoute(r);
@@ -48,7 +45,8 @@ export const App: React.FC = () => {
     // 2. Open Supabase Realtime channel for live updates
     const channel = subscribeToLiveTrains((updatedTrain) => {
       setTrains((prev) => {
-        const index = prev.findIndex((t) => t.train_number === updatedTrain.train_number);
+        const norm = String(updatedTrain.train_number).trim();
+        const index = prev.findIndex((t) => String(t.train_number).trim() === norm);
         if (index >= 0) {
           const next = [...prev];
           next[index] = { ...next[index], ...updatedTrain };
@@ -58,23 +56,23 @@ export const App: React.FC = () => {
       });
 
       setSelectedTrain((cur) => {
-        if (cur && cur.train_number === updatedTrain.train_number) {
+        if (cur && String(cur.train_number).trim() === String(updatedTrain.train_number).trim()) {
           return { ...cur, ...updatedTrain };
         }
         return cur;
       });
     });
 
-    // 3. Realtime Track Gliding Engine: Stepping trains exactly along their tracks every 3 seconds
+    // 3. Realtime Track Gliding Engine: Stepping trains along their tracks every 3 seconds
     const interval = setInterval(() => {
       setTrains((prev) => {
         if (prev.length === 0) return prev;
         const updated = stepTrainsOnTrack(prev, routesMapRef.current, 3);
 
-        // Keep selected train & blue traveled route synchronized with track progress
         const currentSel = selectedTrainRef.current;
         if (currentSel) {
-          const matching = updated.find((t) => t.train_number === currentSel.train_number);
+          const selNum = String(currentSel.train_number).trim();
+          const matching = updated.find((t) => String(t.train_number).trim() === selNum);
           if (matching) {
             setSelectedTrain(matching);
             const route = getRouteForSelectedTrain(matching, routesMapRef.current);
@@ -95,7 +93,7 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // 4. Handle Train Selection & Fetch Route (PRD Req 5 - Traveled in Blue)
+  // 4. Handle Train Selection & Fetch Route (Traveled Tail in Blue)
   const handleSelectTrain = useCallback(async (train: TrainLive) => {
     setSelectedTrain(train);
 
@@ -105,7 +103,7 @@ export const App: React.FC = () => {
       setSelectedRoute(instantRoute);
     }
 
-    // Also check live telemetry from RailRadar API if available (keep track geometry for route)
+    // Check live telemetry from RailRadar API if available (keep track geometry for route)
     try {
       const railRadarResult = await fetchLiveTrainFromRailRadar(train.train_number);
       if (railRadarResult && railRadarResult.train) {
@@ -123,39 +121,33 @@ export const App: React.FC = () => {
 
   // 5. Filtered trains
   const filteredTrains = useMemo(() => {
+    if (!searchQuery.trim()) return trains;
+
+    const q = searchQuery.toLowerCase().trim();
     return trains.filter((t) => {
-      if (selectedType !== 'All' && t.train_type !== selectedType) {
-        return false;
-      }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const matchesNumber = t.train_number.toLowerCase().includes(q);
-        const matchesName = t.train_name.toLowerCase().includes(q);
-        const matchesFrom =
-          (t.from_station_name || '').toLowerCase().includes(q) ||
-          (t.from_station_code || '').toLowerCase().includes(q);
-        const matchesTo =
-          (t.to_station_name || '').toLowerCase().includes(q) ||
-          (t.to_station_code || '').toLowerCase().includes(q);
-        return matchesNumber || matchesName || matchesFrom || matchesTo;
-      }
-      return true;
+      const matchesNumber = String(t.train_number).toLowerCase().includes(q);
+      const matchesName = (t.train_name || '').toLowerCase().includes(q);
+      const matchesFrom =
+        (t.from_station_name || '').toLowerCase().includes(q) ||
+        (t.from_station_code || '').toLowerCase().includes(q);
+      const matchesTo =
+        (t.to_station_name || '').toLowerCase().includes(q) ||
+        (t.to_station_code || '').toLowerCase().includes(q);
+      return matchesNumber || matchesName || matchesFrom || matchesTo;
     });
-  }, [trains, selectedType, searchQuery]);
+  }, [trains, searchQuery]);
 
   return (
     <div className="app-root">
       <TopBar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        selectedType={selectedType}
-        onTypeChange={setSelectedType}
         totalTrainsCount={trains.length}
         filteredCount={filteredTrains.length}
         isRealtimeActive={isRealtimeActive}
       />
 
-      <main className="main-viewport">
+      <main className="main-viewport full-height">
         <Map
           trains={filteredTrains}
           selectedTrain={selectedTrain}
@@ -168,8 +160,6 @@ export const App: React.FC = () => {
           onClose={handleClosePanel}
         />
       </main>
-
-      <Footer />
     </div>
   );
 };

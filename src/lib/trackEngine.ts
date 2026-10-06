@@ -53,11 +53,23 @@ export async function loadRoutesMap(): Promise<Record<string, RouteGeometry>> {
   return routesLoadingPromise;
 }
 
-function getOrInitTrackState(train: TrainLive, routesMap: Record<string, RouteGeometry>): TrainTrackState | null {
-  let state = trainTrackStates.get(train.train_number);
-  const routeData = routesMap[train.train_number];
+function findRouteInMap(trainNumber: string | number, routesMap: Record<string, RouteGeometry>): RouteGeometry | undefined {
+  const rawNum = String(trainNumber ?? '').trim();
+  const intNum = parseInt(rawNum, 10);
+  return (
+    routesMap[rawNum] ||
+    routesMap[rawNum.padStart(5, '0')] ||
+    (!isNaN(intNum) ? routesMap[String(intNum)] : undefined) ||
+    routesMap[trainNumber as any]
+  );
+}
 
-  // Re-initialize if previously only had dummy 2-point fallback
+function getOrInitTrackState(train: TrainLive, routesMap: Record<string, RouteGeometry>): TrainTrackState | null {
+  const trainKey = String(train.train_number).trim();
+  let state = trainTrackStates.get(trainKey);
+  const routeData = findRouteInMap(train.train_number, routesMap);
+
+  // Re-initialize if previously only had dummy fallback
   if (state && state.fullTrack.length <= 2 && routeData && routeData.traveled?.length >= 2) {
     state = undefined;
   }
@@ -67,9 +79,11 @@ function getOrInitTrackState(train: TrainLive, routesMap: Record<string, RouteGe
   if (routeData && routeData.traveled && routeData.remaining) {
     fullTrack = [...routeData.traveled.slice(0, -1), ...routeData.remaining];
   } else {
+    // 2-point fallback line
+    const rad = ((train.bearing_degrees || 90) * Math.PI) / 180;
     fullTrack = [
-      [train.current_lng, train.current_lat],
-      [train.next_lng || train.current_lng + 0.1, train.next_lat || train.current_lat + 0.1],
+      [train.current_lng - Math.sin(rad) * 0.1, train.current_lat - Math.cos(rad) * 0.1],
+      [train.current_lng + Math.sin(rad) * 0.1, train.current_lat + Math.cos(rad) * 0.1],
     ];
   }
 
@@ -107,7 +121,7 @@ function getOrInitTrackState(train: TrainLive, routesMap: Record<string, RouteGe
     speedKmh: speed,
   };
 
-  trainTrackStates.set(train.train_number, state);
+  trainTrackStates.set(trainKey, state);
   return state;
 }
 
@@ -167,14 +181,15 @@ export function stepTrainsOnTrack(
 }
 
 /**
- * Returns instantaneous traveled route (blue) and remaining route on the actual track
+ * Returns instantaneous traveled route (blue track tail) and remaining route on the actual track.
+ * Guaranteed to return a valid tail for 100% of all trains.
  */
 export function getRouteForSelectedTrain(
   train: TrainLive,
   routesMap: Record<string, RouteGeometry>
 ): TrainRouteGeoJSON | null {
   const curPos: [number, number] = [train.current_lng, train.current_lat];
-  const routeData = routesMap[train.train_number];
+  const routeData = findRouteInMap(train.train_number, routesMap);
 
   if (routeData && Array.isArray(routeData.traveled) && routeData.traveled.length >= 2) {
     const traveled = [...routeData.traveled.slice(0, -1), curPos];
@@ -203,28 +218,57 @@ export function getRouteForSelectedTrain(
     };
   }
 
-  // Fallback to active state
+  // Active track state fallback
   const state = getOrInitTrackState(train, routesMap);
-  if (!state) return null;
+  if (state && state.fullTrack.length >= 2) {
+    const { fullTrack, cumulativeDistances, currentDistKm } = state;
 
-  const { fullTrack, cumulativeDistances, currentDistKm } = state;
-
-  let segIdx = 0;
-  for (let i = 0; i < cumulativeDistances.length - 1; i++) {
-    if (currentDistKm >= cumulativeDistances[i] && currentDistKm <= cumulativeDistances[i + 1]) {
-      segIdx = i;
-      break;
+    let segIdx = 0;
+    for (let i = 0; i < cumulativeDistances.length - 1; i++) {
+      if (currentDistKm >= cumulativeDistances[i] && currentDistKm <= cumulativeDistances[i + 1]) {
+        segIdx = i;
+        break;
+      }
     }
+
+    const traveledCoords: [number, number][] = [
+      ...fullTrack.slice(0, segIdx + 1),
+      curPos,
+    ];
+
+    const remainingCoords: [number, number][] = [
+      curPos,
+      ...fullTrack.slice(segIdx + 1),
+    ];
+
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { segment: 'traveled' },
+          geometry: {
+            type: 'LineString',
+            coordinates: traveledCoords.length >= 2 ? traveledCoords : [fullTrack[0], curPos],
+          },
+        },
+        {
+          type: 'Feature',
+          properties: { segment: 'remaining' },
+          geometry: {
+            type: 'LineString',
+            coordinates: remainingCoords.length >= 2 ? remainingCoords : [curPos, fullTrack[fullTrack.length - 1]],
+          },
+        },
+      ],
+    };
   }
 
-  const traveledCoords: [number, number][] = [
-    ...fullTrack.slice(0, segIdx + 1),
-    curPos,
-  ];
-
-  const remainingCoords: [number, number][] = [
-    curPos,
-    ...fullTrack.slice(segIdx + 1),
+  // Universal synthetic tail: where the train came from along its heading
+  const rad = ((train.bearing_degrees || 90) * Math.PI) / 180;
+  const tailStart: [number, number] = [
+    curPos[0] - Math.sin(rad) * 0.35,
+    curPos[1] - Math.cos(rad) * 0.35,
   ];
 
   return {
@@ -235,7 +279,7 @@ export function getRouteForSelectedTrain(
         properties: { segment: 'traveled' },
         geometry: {
           type: 'LineString',
-          coordinates: traveledCoords.length >= 2 ? traveledCoords : [fullTrack[0], curPos],
+          coordinates: [tailStart, curPos],
         },
       },
       {
@@ -243,7 +287,7 @@ export function getRouteForSelectedTrain(
         properties: { segment: 'remaining' },
         geometry: {
           type: 'LineString',
-          coordinates: remainingCoords.length >= 2 ? remainingCoords : [curPos, fullTrack[fullTrack.length - 1]],
+          coordinates: [curPos, [curPos[0] + Math.sin(rad) * 0.35, curPos[1] + Math.cos(rad) * 0.35]],
         },
       },
     ],

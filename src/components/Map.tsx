@@ -11,7 +11,7 @@ interface MapProps {
 }
 
 /**
- * Creates high-DPI orange locomotive train head icon (PRD Req 5)
+ * Creates high-DPI orange locomotive train head icon
  */
 function createOrangeTrainHeadImage(): ImageData {
   const size = 64;
@@ -122,7 +122,7 @@ export const Map: React.FC<MapProps> = ({
     );
 
     map.on('load', () => {
-      // 1. Boost brightness & contrast so map is clear, luminous and not pitch black (PRD Req 3)
+      // 1. Boost brightness & contrast so map is clear, luminous and not pitch black
       applyMapBrightness(map);
 
       // Register orange locomotive icon
@@ -153,7 +153,7 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Crisp Red Dotted Railway Track lines (PRD Req 4)
+        // Crisp Red Dotted Railway Track lines
         map.addLayer({
           id: 'railway-tracks-dotted',
           type: 'line',
@@ -192,7 +192,7 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Green Station Dot (PRD Req 7)
+        // Green Station Dot
         map.addLayer({
           id: 'railway-stations-dot',
           type: 'circle',
@@ -252,7 +252,7 @@ export const Map: React.FC<MapProps> = ({
         });
       }
 
-      // 4. SELECTED TRAIN ROUTE (Vibrant Blue Traveled Route - PRD Req 5)
+      // 4. SELECTED TRAIN ROUTE (Vibrant Blue Traveled Tail Line - PRD Req 5)
       if (!map.getSource('selected-train-route')) {
         map.addSource('selected-train-route', {
           type: 'geojson',
@@ -262,7 +262,7 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Traveled Route Glow (Neon Sky Blue)
+        // Traveled Route Glow (Neon Sky Blue Comet Glow)
         map.addLayer({
           id: 'route-traveled-glow',
           type: 'line',
@@ -274,13 +274,13 @@ export const Map: React.FC<MapProps> = ({
           },
           paint: {
             'line-color': '#00e5ff',
-            'line-width': 18,
-            'line-opacity': 0.75,
+            'line-width': 20,
+            'line-opacity': 0.85,
             'line-blur': 8,
           },
         });
 
-        // Traveled Route Solid Line (Electric Vibrant Cyan-Blue - PRD Req 5)
+        // Traveled Route Solid Line (Electric Vibrant Cyan-Blue Track Tail)
         map.addLayer({
           id: 'route-traveled-line',
           type: 'line',
@@ -292,7 +292,7 @@ export const Map: React.FC<MapProps> = ({
           },
           paint: {
             'line-color': '#00d2ff',
-            'line-width': 6.5,
+            'line-width': 7.5,
             'line-opacity': 1.0,
           },
         });
@@ -311,7 +311,7 @@ export const Map: React.FC<MapProps> = ({
             'line-color': '#7dd3fc',
             'line-width': 3,
             'line-dasharray': [2, 2],
-            'line-opacity': 0.85,
+            'line-opacity': 0.75,
           },
         });
       }
@@ -322,7 +322,7 @@ export const Map: React.FC<MapProps> = ({
           type: 'Feature' as const,
           id: t.train_number,
           properties: {
-            train_number: t.train_number,
+            train_number: String(t.train_number).trim(),
             train_name: t.train_name,
             train_type: t.train_type,
             bearing_degrees: t.bearing_degrees || 0,
@@ -365,7 +365,7 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // Orange Locomotive Train Head Symbol (PRD Req 5)
+        // Orange Locomotive Train Head Symbol
         map.addLayer({
           id: 'trains-live-head',
           type: 'symbol',
@@ -405,7 +405,7 @@ export const Map: React.FC<MapProps> = ({
           },
         });
 
-        // 6. Selected Train Pulse Ring
+        // 6. Selected Train Pulse Ring (Vibrant Cyan Circle Selector)
         map.addSource('trains-selected-source', {
           type: 'geojson',
           data: {
@@ -419,20 +419,31 @@ export const Map: React.FC<MapProps> = ({
           type: 'circle',
           source: 'trains-selected-source',
           paint: {
-            'circle-radius': 18,
+            'circle-radius': 22,
             'circle-color': '#00e5ff',
-            'circle-opacity': 0.4,
-            'circle-stroke-width': 3.5,
+            'circle-opacity': 0.35,
+            'circle-stroke-width': 4,
             'circle-stroke-color': '#ffffff',
           },
         });
 
-        // Interactive Handlers for Train Selection
+        // Interactive Handlers for Train Selection (Robust number & string normalization)
         const handleTrainClick = (e: any) => {
           const feat = e.features?.[0];
           if (!feat) return;
-          const trainNum = feat.properties?.train_number;
-          const found = trainsRef.current.find((t) => t.train_number === trainNum);
+          const rawNum = feat.properties?.train_number;
+          const strNum = String(rawNum ?? '').trim();
+          const intNum = parseInt(strNum, 10);
+
+          const found = trainsRef.current.find((t) => {
+            const tNum = String(t.train_number).trim();
+            return (
+              tNum === strNum ||
+              tNum === strNum.padStart(5, '0') ||
+              (!isNaN(intNum) && parseInt(tNum, 10) === intNum)
+            );
+          });
+
           if (found) {
             onSelectTrain(found);
           }
@@ -483,7 +494,7 @@ export const Map: React.FC<MapProps> = ({
     };
   }, []);
 
-  // Update All Trains Live GeoJSON (PRD Req 1 & 2)
+  // Update All Trains Live GeoJSON
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -497,7 +508,7 @@ export const Map: React.FC<MapProps> = ({
             type: 'Feature',
             id: t.train_number,
             properties: {
-              train_number: t.train_number,
+              train_number: String(t.train_number).trim(),
               train_name: t.train_name,
               train_type: t.train_type,
               bearing_degrees: t.bearing_degrees || 0,
@@ -562,7 +573,7 @@ export const Map: React.FC<MapProps> = ({
     }
   }, [selectedTrain]);
 
-  // Update Route Layers when selectedRoute changes (Traveled in Blue - PRD Req 5)
+  // Update Route Layers when selectedRoute changes (Traveled Tail in Electric Cyan-Blue)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -576,9 +587,9 @@ export const Map: React.FC<MapProps> = ({
             map.moveLayer('route-traveled-glow');
             map.moveLayer('route-traveled-line');
             map.moveLayer('route-remaining-line');
-            if (map.getLayer('train-selected-ring')) {
-              map.moveLayer('train-selected-ring');
-            }
+            if (map.getLayer('trains-live-glow')) map.moveLayer('trains-live-glow');
+            if (map.getLayer('trains-live-head')) map.moveLayer('trains-live-head');
+            if (map.getLayer('train-selected-ring')) map.moveLayer('train-selected-ring');
           }
         } else {
           source.setData({

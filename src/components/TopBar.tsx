@@ -56,7 +56,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <input
             type="text"
             className="search-input"
-            placeholder="Search trains by number or name (e.g. 12951, Rajdhani, Mumbai, Srinagar)..."
+            placeholder="Search trains by number or name (e.g. 12951, Rajdhani)..."
             value={searchQuery}
             onFocus={() => setShowDropdown(true)}
             onChange={(e) => {

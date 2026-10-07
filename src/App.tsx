@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { TrainLive, TrainRouteGeoJSON } from './types/train';
 import { fetchLiveTrains, subscribeToLiveTrains } from './lib/supabase';
 import { fetchLiveTrainFromRailRadar } from './lib/railradar';
@@ -142,8 +142,6 @@ export const App: React.FC = () => {
       <TopBar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        totalTrainsCount={trains.length}
-        filteredCount={filteredTrains.length}
         isRealtimeActive={isRealtimeActive}
         matchingTrains={filteredTrains}
         onSelectTrain={handleSelectTrain}
@@ -167,3 +165,4 @@ export const App: React.FC = () => {
 };
 
 export default App;
+

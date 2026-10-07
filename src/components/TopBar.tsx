@@ -1,12 +1,10 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Search, X, Radio, ArrowRight } from 'lucide-react';
 import { TrainLive } from '../types/train';
 
 interface TopBarProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  totalTrainsCount: number;
-  filteredCount: number;
   isRealtimeActive: boolean;
   matchingTrains: TrainLive[];
   onSelectTrain: (train: TrainLive) => void;
@@ -15,8 +13,6 @@ interface TopBarProps {
 export const TopBar: React.FC<TopBarProps> = ({
   searchQuery,
   onSearchChange,
-  totalTrainsCount,
-  filteredCount,
   isRealtimeActive,
   matchingTrains,
   onSelectTrain,
@@ -121,9 +117,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <span className="live-label">
             {isRealtimeActive ? 'LIVE REALTIME' : 'POLLING'}
           </span>
-          <span className="live-count">
-            {filteredCount} / {totalTrainsCount}
-          </span>
+          
         </div>
       </div>
     </header>
@@ -131,4 +125,6 @@ export const TopBar: React.FC<TopBarProps> = ({
 };
 
 export default TopBar;
+
+
 

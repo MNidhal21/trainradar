@@ -965,17 +965,80 @@ body, html {
   .top-bar-container {
     width: calc(100% - 16px);
     top: 8px;
+    left: 8px;
+    transform: none;
+  }
+  .top-bar-inner {
+    padding: 6px 10px;
+    gap: 8px;
+    border-radius: 14px;
+  }
+  .brand-section {
+    gap: 6px;
+  }
+  .brand-icon-wrapper {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+  }
+  .brand-title {
+    font-size: 14px;
   }
   .brand-subtitle, .footer-meta {
     display: none;
   }
+  .search-input {
+    height: 34px;
+    padding: 0 28px 0 30px;
+    font-size: 12px;
+    border-radius: 10px;
+  }
+  .search-icon {
+    left: 9px;
+  }
+  .status-indicator-pill {
+    padding: 4px 8px;
+    gap: 6px;
+  }
+  .live-dot {
+    width: 6px;
+    height: 6px;
+  }
+  .live-label {
+    font-size: 9px;
+    letter-spacing: 0.04em;
+  }
+  .map-center-btn {
+    top: 68px;
+    right: 8px;
+    padding: 6px 10px;
+    font-size: 11px;
+    border-radius: 8px;
+  }
+  .maplibregl-ctrl-top-right {
+    top: 68px !important;
+    right: 8px !important;
+  }
   .train-details-panel {
     top: auto;
-    bottom: 42px;
+    bottom: 12px;
     left: 8px;
     right: 8px;
     width: auto;
-    max-height: 55vh;
+    max-width: none;
+    max-height: 60vh;
+    padding: 14px;
+    border-radius: 16px;
+    gap: 10px;
+  }
+  .journey-endpoints-card {
+    padding: 10px 12px;
+  }
+  .endpoint-code {
+    font-size: 14px;
+  }
+  .endpoint-name {
+    font-size: 11px;
   }
 }
 
